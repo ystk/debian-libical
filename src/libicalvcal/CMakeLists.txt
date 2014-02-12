@@ -24,17 +24,22 @@ SET(icalvcal_LIB_SRCS
 )
 
 if(MSVC)
-    list(APPEND icalvcal_LIB_SRCS ../icalvcal.def)
+  list(APPEND icalvcal_LIB_SRCS ../icalvcal.def)
 endif(MSVC)
 
-add_library(icalvcal SHARED ${icalvcal_LIB_SRCS})
+add_library(icalvcal ${LIBRARY_TYPE} ${icalvcal_LIB_SRCS})
 add_library(icalvcal-static STATIC ${icalvcal_LIB_SRCS})
 
 target_link_libraries(icalvcal ical)
 
+if(MSVC)
+  set_target_properties(icalvcal PROPERTIES OUTPUT_NAME "libicalvcal")
+  set_target_properties(icalvcal-static PROPERTIES OUTPUT_NAME "libicalvcal-static")
+else(MSVC)
+  set_target_properties(icalvcal-static PROPERTIES OUTPUT_NAME "icalvcal")
+endif(MSVC)
 set_target_properties(icalvcal PROPERTIES VERSION ${LIBICAL_LIB_VERSION_STRING} SOVERSION ${LIBICAL_LIB_MAJOR_VERSION})
 set_target_properties(icalvcal PROPERTIES CLEAN_DIRECT_OUTPUT 1)
-set_target_properties(icalvcal-static PROPERTIES OUTPUT_NAME "icalvcal")
 set_target_properties(icalvcal-static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
 install(TARGETS icalvcal icalvcal-static ${INSTALL_TARGETS_DEFAULT_ARGS})
@@ -60,7 +65,7 @@ install(FILES
 #	-I$(top_builddir)/src/libical	\
 #	-I$(top_srcdir)/src/libicalss
 #
-#libicalvcal_la_LDFLAGS = -version-info 44:0:44
+#libicalvcal_la_LDFLAGS = -version-info 48:0:48
 #libicalvcal_la_LIBADD = ../libical/.libs/libical.la
 #
 #if DEV

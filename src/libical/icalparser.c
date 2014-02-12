@@ -68,9 +68,9 @@
 # endif
 #endif
 
-#ifdef WIN32
-#define snprintf      _snprintf
-#define strcasecmp    stricmp
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#define strcasecmp stricmp
 #endif
 
 static char* parser_get_next_char(char c, char *str, int qm);
@@ -115,14 +115,14 @@ void strstriplt(char *buf)
 		return;
 	}
 	len = strlen(buf);
-        while ((buf[0] != 0) && (isspace(buf[len - 1]))) {
+        while ((buf[0] != 0) && (isspace((unsigned char)buf[len - 1]))) {
                 buf[--len] = 0;
 	}
 	if (buf[0] == 0) {
 		return;
 	}
 	a = 0;
-        while ((buf[0]!=0) && (isspace(buf[a]))) {
+        while ((buf[0]!=0) && (isspace((unsigned char)buf[a]))) {
 		a++;
 	}
 	if (a > 0) {
@@ -192,18 +192,18 @@ char* parser_get_next_char(char c, char *str, int qm)
 
     for(p=str; *p!=0; p++){
 	    if (qm == 1) {
-				if ( quote_mode == 0 && *p=='"' && *(p-1) != '\\' ){
+				if ( quote_mode == 0 && *p=='"' && p>str && *(p-1) != '\\' ){
 						quote_mode =1;
 						continue;
 				}
 
-				if ( quote_mode == 1 && *p=='"' && *(p-1) != '\\' ){
+				if ( quote_mode == 1 && *p=='"' && p>str && *(p-1) != '\\' ){
 						quote_mode =0;
 						continue;
 				}
 	    }
 		
-		if (quote_mode == 0 &&  *p== c  && *(p-1) != '\\' ){
+		if (quote_mode == 0 &&  *p== c  && p>str && *(p-1) != '\\' ){
 				return p;
 		} 
 
@@ -887,81 +887,106 @@ icalcomponent* icalparser_add_line(icalparser* parser,
 	    name = parser_get_param_name(str,&pvalue,&buf_value);
 
 	    if (name == 0){
-		/* 'tail' defined above */
-		insert_error(tail, str, "Cant parse parameter name",
-			     ICAL_XLICERRORTYPE_PARAMETERNAMEPARSEERROR);
-		tail = 0;
-		break;
+		    /* 'tail' defined above */
+		    insert_error(tail, str, "Cant parse parameter name",
+			             ICAL_XLICERRORTYPE_PARAMETERNAMEPARSEERROR);
+			tail = 0;
+			break;
 	    }
 
 	    kind = icalparameter_string_to_kind(name);
 
 	    if(kind == ICAL_X_PARAMETER){
 		param = icalparameter_new(ICAL_X_PARAMETER);
-		
-		if(param != 0){
-		    icalparameter_set_xname(param,name);
-		    icalparameter_set_xvalue(param,pvalue);
-		}
-		icalmemory_free_buffer(buf_value);
-		buf_value = NULL;
+            if(param != 0){
+                icalparameter_set_xname(param,name);
+                icalparameter_set_xvalue(param,pvalue);
+            }
+            icalmemory_free_buffer(buf_value);
+            buf_value = NULL;
+	    } else if (kind == ICAL_IANA_PARAMETER){
+            ical_unknown_token_handling tokHandlingSetting = 
+                ical_get_unknown_token_handling_setting();
+            if (tokHandlingSetting == ICAL_DISCARD_TOKEN)
+                continue;
+            param = icalparameter_new(ICAL_IANA_PARAMETER);
+            
+            if(param != 0){
+                icalparameter_set_xname(param,name);
+                icalparameter_set_xvalue(param,pvalue);
+            }
+            icalmemory_free_buffer(buf_value);
+            buf_value = NULL;
 
 	    } else if (kind != ICAL_NO_PARAMETER){
-		param = icalparameter_new_from_value_string(kind,pvalue);
+			param = icalparameter_new_from_value_string(kind,pvalue);
 
-		icalmemory_free_buffer(buf_value);
-		buf_value = NULL;
+			icalmemory_free_buffer(buf_value);
+			buf_value = NULL;
 
 	    } else {
-		/* Error. Failed to parse the parameter*/
-		/* 'tail' defined above */
+		    /* Error. Failed to parse the parameter*/
+		    /* 'tail' defined above */
 
-                /* Change for mozilla */
-                /* have the option of being flexible towards unsupported parameters */
-                #ifndef ICAL_ERRORS_ARE_FATAL
-                continue;
-                #endif
+			icalmemory_free_buffer(buf_value);
+			buf_value = NULL;
 
-		insert_error(tail, str, "Cant parse parameter name",
-			     ICAL_XLICERRORTYPE_PARAMETERNAMEPARSEERROR);
-		tail = 0;
-		parser->state = ICALPARSER_ERROR;
-		/* if (pvalue) {
-			free(pvalue);
-			pvalue = 0;
-		} */
-		if (name) {
-			free(name);
-			name = 0;
-		}
-		return 0;
+            /* Change for mozilla */
+            /* have the option of being flexible towards unsupported parameters */
+#if ICAL_ERRORS_ARE_FATAL == 1
+		    insert_error(tail, str, "Cant parse parameter name",
+			             ICAL_XLICERRORTYPE_PARAMETERNAMEPARSEERROR);
+			tail = 0;
+			parser->state = ICALPARSER_ERROR;
+			/* if (pvalue) {
+			       free(pvalue);
+			       pvalue = 0;
+			   }
+			*/
+		    if (name) {
+			    free(name);
+			    name = 0;
+		    }
+			icalmemory_free_buffer(str);
+			str = NULL;
+		    return 0;
+#else
+		    if (name) {
+			    free(name);
+			    name = 0;
+		    }
+			icalmemory_free_buffer(str);
+			str = NULL;
+		    continue;
+#endif
 	    }
 
 	    /* if (pvalue) {
-		free(pvalue);
-		pvalue = 0;
-	    } */
+		       free(pvalue);
+		       pvalue = 0;
+	       }
+		*/
 	    if (name) {
-		free(name);
-		name = 0;
+		    free(name);
+		    name = 0;
 	    }
 
 	    if (param == 0){
-		/* 'tail' defined above */
-		insert_error(tail,str,"Cant parse parameter value",
-			     ICAL_XLICERRORTYPE_PARAMETERVALUEPARSEERROR);
+		    /* 'tail' defined above */
+		    insert_error(tail,str,"Cant parse parameter value",
+			             ICAL_XLICERRORTYPE_PARAMETERVALUEPARSEERROR);
 		    
-		tail = 0;
-		parser->state = ICALPARSER_ERROR;
+ 		    tail = 0;
+		    parser->state = ICALPARSER_ERROR;
 		
-		icalmemory_free_buffer(buf_value);
-		buf_value = NULL;
-		icalmemory_free_buffer(name);
-		name = NULL;
-		icalmemory_free_buffer(str);
-		str = NULL;
+			icalmemory_free_buffer(buf_value);
+			buf_value = NULL;
+			icalmemory_free_buffer(name);
+			name = NULL;
+			icalmemory_free_buffer(str);
+			str = NULL;
   	  	
-		continue;
+			continue;
 	    }
 
 	    /* If it is a VALUE parameter, set the kind of value*/
@@ -1067,7 +1092,14 @@ icalcomponent* icalparser_add_line(icalparser* parser,
 		prop = clone;		    
 		tail = 0;
 	    }
-		
+
+		/* If this is a URI value for an ATTACH property, then change
+		   the value to an ATTACH kind as well.
+		   Now we can support ATTACH;TYPE=URI:http://my.fav.url
+		*/
+		if(value_kind == ICAL_URI_VALUE && prop_kind == ICAL_ATTACH_PROPERTY){
+				value_kind = ICAL_ATTACH_VALUE;
+		}
 	    value = icalvalue_new_from_string(value_kind, str);
 		
 	    /* Don't add properties without value */
@@ -1103,6 +1135,10 @@ icalcomponent* icalparser_add_line(icalparser* parser,
 	    str = NULL;
 
 	} else {
+#if ICAL_ALLOW_EMPTY_PROPERTIES
+        /* Don't replace empty properties with an error */
+        break;
+#else
 	    if (vcount == 0){
 		char temp[200]; /* HACK */
 		
@@ -1126,6 +1162,7 @@ icalcomponent* icalparser_add_line(icalparser* parser,
 
 		break;
 	    }
+#endif
 	}
     }
 	

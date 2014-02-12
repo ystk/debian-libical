@@ -25,12 +25,20 @@
 #endif
 #include <string.h>
 
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif
+
 #if defined(sun) && defined(__SVR4)
+#include <sys/types.h>
 #include <sys/byteorder.h>
 #else
 # ifdef HAVE_BYTESWAP_H
 #  include <byteswap.h>
 # endif
+# ifdef HAVE_ENDIAN_H
+#  include <endian.h>
+# else
 # ifdef HAVE_SYS_ENDIAN_H
 #  include <sys/endian.h>
 #  ifdef bswap32
@@ -39,12 +47,10 @@
 #   define bswap_32 swap32
 #  endif
 # endif
-# ifdef HAVE_ENDIAN_H
-#  include <endian.h>
-# endif 
+# endif
 #endif
 
-#ifdef WIN32
+#ifdef _MSC_VER
 #if !defined(HAVE_BYTESWAP_H) && !defined(HAVE_SYS_ENDIAN_H) && !defined(HAVE_ENDIAN_H)
 #define bswap_16(x) (((x) << 8) & 0xff00) | (((x) >> 8 ) & 0xff)
 #define bswap_32(x) (((x) << 24) & 0xff000000)  \
@@ -61,6 +67,12 @@
                     | (((x) & 0x00000000000000ffull) << 56))
 #endif
 #include <io.h>
+#endif
+
+#if defined(__APPLE__)
+#define bswap_16(x) (((x) << 8) & 0xff00) | (((x) >> 8 ) & 0xff)
+#define bswap_32 __builtin_bswap32
+#define bswap_64 __builtin_bswap64
 #endif
 
 #ifndef PATH_MAX
@@ -214,7 +226,7 @@ find_transidx (time_t *transitions, ttinfo *types, int *trans_idx, long int num_
 }
 
 static void
-set_zone_directory (void)
+set_zonedir (void)
 {
 	char file_path[PATH_MAX];
 	const char *fname = ZONES_TAB_SYSTEM_FILENAME;
@@ -234,7 +246,7 @@ const char *
 icaltzutil_get_zone_directory (void)
 {
 	if (!zdir)
-		set_zone_directory ();
+		set_zonedir ();
 
 	return zdir;
 }
@@ -286,10 +298,10 @@ icaltzutil_fetch_timezone (const char *location)
 	int ret = 0;
 	FILE *f;
 	tzinfo type_cnts;
-	unsigned int num_trans, num_types, num_chars, num_leaps, num_isstd, num_isgmt;
+	unsigned int i, num_trans, num_types, num_chars, num_leaps, num_isstd, num_isgmt;
 	time_t *transitions = NULL;
 	time_t trans;
-	int *trans_idx = NULL, dstidx = -1, stdidx = -1, pos, sign, zidx, zp_idx, i;
+	int *trans_idx = NULL, dstidx = -1, stdidx = -1, pos, sign, zidx, zp_idx;
 	ttinfo *types = NULL;
 	char *znames = NULL, *full_path, *tzid, *r_trans, *temp;
 	leap *leaps = NULL;
@@ -297,12 +309,16 @@ icaltzutil_fetch_timezone (const char *location)
 	icalproperty *icalprop;
 	icaltimetype dtstart, icaltime;
 	struct icalrecurrencetype ical_recur;
+	const char *basedir;
 	       
-	if (!zdir) 
-		set_zone_directory ();
-	
-	full_path = (char *) malloc (strlen (zdir) + strlen (location) + 2);
-	sprintf (full_path,"%s/%s",zdir, location);
+	basedir = icaltzutil_get_zone_directory();
+	if (!basedir) {
+		icalerror_set_errno (ICAL_FILE_ERROR);
+		return NULL;
+	}
+
+	full_path = (char *) malloc (strlen (basedir) + strlen (location) + 2);
+	sprintf (full_path,"%s/%s",basedir, location);
 
 	if ((f = fopen (full_path, "rb")) == 0) {
 		icalerror_set_errno (ICAL_FILE_ERROR);
@@ -426,7 +442,10 @@ icaltzutil_fetch_timezone (const char *location)
 		else
 			zp_idx = zidx;
 		/* DTSTART localtime uses TZOFFSETFROM UTC offset */
-		trans = transitions [stdidx] + types [zp_idx].gmtoff;
+		if (num_trans != 0)
+			trans = transitions [stdidx] + types [zp_idx].gmtoff;
+		else
+			trans = types [zp_idx].gmtoff;
 		icaltime = icaltime_from_timet (trans, 0);
 		dtstart = icaltime;
 		dtstart.year = 1970;
@@ -465,7 +484,10 @@ icaltzutil_fetch_timezone (const char *location)
 		icalcomponent_add_property (dst_comp, icalprop);
 
 		/* DTSTART localtime uses TZOFFSETFROM UTC offset */
-		trans = transitions [dstidx] + types [zp_idx].gmtoff;
+		if (num_trans != 0)
+			trans = transitions [dstidx] + types [zp_idx].gmtoff;
+		else
+			trans = types [zp_idx].gmtoff;
 		icaltime = icaltime_from_timet (trans, 0);
 		dtstart = icaltime;
 		dtstart.year = 1970;

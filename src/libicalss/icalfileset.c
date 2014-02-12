@@ -38,22 +38,27 @@
 #include <unistd.h> /* for stat, getpid */
 #else
 #include <io.h>
+#ifndef _WIN32_WCE
 #include <share.h>
 #endif
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h> /* for fcntl */
 #include "icalfilesetimpl.h"
 #include "icalclusterimpl.h"
 
-#ifdef WIN32
-#define snprintf	_snprintf
-#define strcasecmp	stricmp
-
+#if defined(_MSC_VER)
 #define _S_ISTYPE(mode, mask)  (((mode) & _S_IFMT) == (mask))
-
 #define S_ISDIR(mode)    _S_ISTYPE((mode), _S_IFDIR)
 #define S_ISREG(mode)    _S_ISTYPE((mode), _S_IFREG)
+#define snprintf _snprintf
+#define strcasecmp stricmp
+#endif
+
+#ifdef _WIN32_WCE
+#include <winbase.h>
 #endif
 
 /** Default options used when NULL is passed to icalset_new() **/
@@ -366,6 +371,10 @@ icalerrorenum icalfileset_commit(icalset* set)
     icalcomponent *c;
     off_t write_size=0;
     icalfileset *fset = (icalfileset*) set;
+#ifdef _WIN32_WCE
+    wchar_t *wtmp=0;
+    PROCESS_INFORMATION pi;
+#endif
 
     icalerror_check_arg_re((fset!=0),"set",ICAL_BADARG_ERROR);  
     
@@ -378,18 +387,28 @@ icalerrorenum icalfileset_commit(icalset* set)
     
     if (fset->options.safe_saves == 1) {
 #ifndef WIN32
-	char *quoted_file = shell_quote(fset->path);
-	snprintf(tmp,ICAL_PATH_MAX,"cp '%s' '%s.bak'",fset->path, fset->path);
-	free(quoted_file);
+        char *quoted_file = shell_quote(fset->path);
+        snprintf(tmp,ICAL_PATH_MAX,"cp '%s' '%s.bak'",fset->path, fset->path);
+        free(quoted_file);
 #else
-	snprintf(tmp,ICAL_PATH_MAX,"copy %s %s.bak", fset->path, fset->path);
+        snprintf(tmp,ICAL_PATH_MAX,"copy %s %s.bak", fset->path, fset->path);
 #endif
 
-	if(system(tmp) < 0){
-	    icalerror_set_errno(ICAL_FILE_ERROR);
-	    return ICAL_FILE_ERROR;
-	}
+#ifndef _WIN32_WCE
+        if(system(tmp) < 0){
+#else
+
+        wtmp = wce_mbtowc(tmp);
+
+        if (CreateProcess (wtmp, L"", NULL, NULL, FALSE, 0, NULL, NULL, NULL,&pi)){
+#endif
+            icalerror_set_errno(ICAL_FILE_ERROR);
+            return ICAL_FILE_ERROR;
+        }
     }
+#ifdef _WIN32_WCE
+    free(wtmp);
+#endif
 
     if(lseek(fset->fd, 0, SEEK_SET) < 0){
 	icalerror_set_errno(ICAL_FILE_ERROR);
@@ -408,6 +427,7 @@ icalerrorenum icalfileset_commit(icalset* set)
 	if ( sz != strlen(str)){
 	    perror("write");
 	    icalerror_set_errno(ICAL_FILE_ERROR);
+	    free(str);
 	    return ICAL_FILE_ERROR;
 	}
 
@@ -422,7 +442,11 @@ icalerrorenum icalfileset_commit(icalset* set)
 	return ICAL_FILE_ERROR;
     }
 #else
+#ifndef _WIN32_WCE
 	chsize( fset->fd, tell( fset->fd ) );
+#else
+    SetEndOfFile(fset->fd);
+#endif
 #endif
     
     return ICAL_NO_ERROR;

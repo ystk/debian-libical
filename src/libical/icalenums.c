@@ -37,6 +37,10 @@
 #include <assert.h>
 #include "icalmemory.h"
 
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#endif
+
 /*** @brief Allowed request status values
  */
 static const struct {

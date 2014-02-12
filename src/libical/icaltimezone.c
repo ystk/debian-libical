@@ -40,12 +40,20 @@
 #include "icalerror.h"
 #include "icalparser.h"
 #include "icaltimezone.h"
+#include "icaltimezoneimpl.h"
 #include "icaltz-util.h"
 
 #include <sys/stat.h>
 
+#ifdef HAVE_PTHREAD
+#include <pthread.h>
+static pthread_mutex_t builtin_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 #ifdef WIN32
+#ifndef _WIN32_WCE
 #include <mbstring.h>
+#endif
 #include <windows.h>
 /* Undef the similar macro from pthread.h, it doesn't check if
  * gmtime() returns NULL.
@@ -54,6 +62,16 @@
 
 /* The gmtime() in Microsoft's C library is MT-safe */
 #define gmtime_r(tp,tmp) (gmtime(tp)?(*(tmp)=*gmtime(tp),(tmp)):0)
+
+// MSVC lacks the POSIX macro S_ISDIR, however it's a trivial one:
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
+#endif
+
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#define strcasecmp stricmp
 #endif
 
 /** This is the toplevel directory where the timezone data is installed in. */
@@ -75,54 +93,6 @@ const char *ical_tzid_prefix =	"/freeassociation.sourceforge.net/";
 /** This is the maximum year we will expand to. time_t values only go up to
     somewhere around 2037. */
 #define ICALTIMEZONE_MAX_YEAR		2035
-
-struct _icaltimezone {
-    char		*tzid;
-    /**< The unique ID of this timezone,
-       e.g. "/citadel.org/Olson_20010601_1/Africa/Banjul".
-       This should only be used to identify a VTIMEZONE. It is not
-       meant to be displayed to the user in any form. */
-
-    char		*location;
-    /**< The location for the timezone, e.g. "Africa/Accra" for the
-       Olson database. We look for this in the "LOCATION" or
-       "X-LIC-LOCATION" properties of the VTIMEZONE component. It
-       isn't a standard property yet. This will be NULL if no location
-       is found in the VTIMEZONE. */
-
-    char		*tznames;
-    /**< This will be set to a combination of the TZNAME properties
-       from the last STANDARD and DAYLIGHT components in the
-       VTIMEZONE, e.g. "EST/EDT".  If they both use the same TZNAME,
-       or only one type of component is found, then only one TZNAME
-       will appear, e.g. "AZOT". If no TZNAME is found this will be
-       NULL. */
-
-    double		 latitude;
-    double		 longitude;
-    /**< The coordinates of the city, in degrees. */
-
-    icalcomponent	*component;
-    /**< The toplevel VTIMEZONE component loaded from the .ics file for this
-         timezone. If we need to regenerate the changes data we need this. */
-
-    icaltimezone	*builtin_timezone;
-    /**< If this is not NULL it points to the builtin icaltimezone
-       that the above TZID refers to. This icaltimezone should be used
-       instead when accessing the timezone changes data, so that the
-       expanded timezone changes data is shared between calendar
-       components. */
-
-    int			 end_year;
-    /**< This is the last year for which we have expanded the data to.
-       If we need to calculate a date past this we need to expand the
-       timezone component data from scratch. */
-
-    icalarray		*changes;
-    /**< A dynamically-allocated array of time zone changes, sorted by the
-       time of the change in local time. So we can do fast binary-searches
-       to convert from local time to UTC. */
-};
 
 typedef struct _icaltimezonechange	icaltimezonechange;
 
@@ -234,10 +204,18 @@ icaltimezone_copy			(icaltimezone *originalzone)
     }
 
     memcpy (zone, originalzone, sizeof (icaltimezone));
+    if (zone->tzid != NULL) 
+	zone->tzid = strdup (zone->tzid);
     if (zone->location != NULL) 
 	zone->location = strdup (zone->location);
     if (zone->tznames != NULL)
 	zone->tznames = strdup (zone->tznames);
+    if (zone->changes != NULL)
+        zone->changes = icalarray_copy(zone->changes);
+    
+    /* Let the caller set the component because then they will
+       know to be careful not to free this reference twice. */
+    zone->component = NULL;
 
     return zone;
 }
@@ -309,17 +287,16 @@ icaltimezone_get_vtimezone_properties	(icaltimezone *zone,
     if (!tzid)
 	return 0;
 
-    prop = icalcomponent_get_first_property (component, ICAL_TZNAME_PROPERTY);
-    if (prop) {
-	tzname = icalproperty_get_tzname (prop);
-	zone->tznames = strdup(tzname);	
-    } else
-	zone->tznames = NULL;
-    
+    if (zone->tzid) free(zone->tzid);
     zone->tzid = strdup (tzid);
+
+    if (zone->component) icalcomponent_free(zone->component);
     zone->component = component;
-	if ( zone->location != 0 ) free ( zone->location );
+
+    if (zone->location) free(zone->location);
     zone->location = icaltimezone_get_location_from_vtimezone (component);
+
+    if (zone->tznames) free(zone->tznames);
     zone->tznames = icaltimezone_get_tznames_from_vtimezone (component);
 
     return 1;
@@ -449,7 +426,7 @@ icaltimezone_get_tznames_from_vtimezone (icalcomponent *component)
     /* If both standard and daylight TZNAMEs were found, if they are the same
        we return just one, else we format them like "EST/EDT". */
     if (standard_tzname && daylight_tzname) {
-	unsigned int standard_len, daylight_len;
+	size_t standard_len, daylight_len;
 	char *tznames;
 
 	if (!strcmp (standard_tzname, daylight_tzname))
@@ -482,8 +459,7 @@ icaltimezone_ensure_coverage		(icaltimezone *zone,
 
     int changes_end_year;
 
-    if (!zone->component)
-	icaltimezone_load_builtin_timezone (zone);
+    icaltimezone_load_builtin_timezone (zone);
 
     if (icaltimezone_minimum_expansion_year == -1) {
 	struct icaltimetype today = icaltime_today();
@@ -593,6 +569,14 @@ icaltimezone_expand_vtimezone		(icalcomponent	*comp,
 	}
 
 	prop = icalcomponent_get_next_property (comp, ICAL_ANY_PROPERTY);
+    }
+
+    /* Microsoft Outlook for Mac (and possibly other versions) will create
+       timezones without a tzoffsetfrom property if it's a timezone that
+       doesn't change for DST. */
+    if (found_tzoffsetto && !found_tzoffsetfrom) {
+        change.prev_utc_offset = change.utc_offset;
+        found_tzoffsetfrom = 1;
     }
 
     /* If we didn't find a DTSTART, TZOFFSETTO and TZOFFSETFROM we have to
@@ -1169,8 +1153,7 @@ icaltimezone_get_tzid			(icaltimezone *zone)
     if (!zone)
 	return NULL;
 
-    if (!zone->tzid)
-	icaltimezone_load_builtin_timezone (zone);
+    icaltimezone_load_builtin_timezone (zone);
 
     return zone->tzid;
 }
@@ -1196,8 +1179,7 @@ icaltimezone_get_tznames		(icaltimezone *zone)
     if (!zone)
 	return NULL;
 
-    if (!zone->component)
-	icaltimezone_load_builtin_timezone (zone);
+    icaltimezone_load_builtin_timezone (zone);
 
     return zone->tznames;
 }
@@ -1239,8 +1221,7 @@ icaltimezone_get_component		(icaltimezone *zone)
     if (!zone)
 	return NULL;
 
-    if (!zone->component)
-	icaltimezone_load_builtin_timezone (zone);
+    icaltimezone_load_builtin_timezone (zone);
 
     return zone->component;
 }
@@ -1364,7 +1345,7 @@ icaltimezone_get_builtin_timezone	(const char *location)
 {
     icalcomponent *comp;
     icaltimezone *zone;
-    int lower;
+    unsigned int lower;
     const char *zone_location;
 
     if (!location || !location[0])
@@ -1478,8 +1459,7 @@ icaltimezone_get_builtin_timezone_from_offset	(int offset, const char *tzname)
     for (i=0; i<count; i++) {
 	int z_offset;
 	zone = icalarray_element_at (builtin_timezones, i);
-	if (!zone->component)
-	    icaltimezone_load_builtin_timezone (zone);
+        icaltimezone_load_builtin_timezone (zone);
 	
 	z_offset = get_offset(zone);
 
@@ -1557,7 +1537,14 @@ icaltimezone_init_builtin_timezones	(void)
     /* Initialize the special UTC timezone. */
     utc_timezone.tzid = (char *)"UTC";
 
-    icaltimezone_parse_zone_tab ();
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&builtin_mutex);
+#endif
+    if (!builtin_timezones)
+        icaltimezone_parse_zone_tab ();
+#ifdef HAVE_PTHREAD
+    pthread_mutex_unlock(&builtin_mutex);
+#endif
 }
 
 static int
@@ -1586,7 +1573,7 @@ parse_coord			(char		*coord,
 }
 static int
 fetch_lat_long_from_string  (const char *str, int *latitude_degrees, int *latitude_minutes, int *latitude_seconds,
-		int *longitude_degrees, int *longitude_minutes, int *longitude_seconds, char *location)
+			     int *longitude_degrees, int *longitude_minutes, int *longitude_seconds, char *location)
 {
 	size_t len;
 	char *sptr, *lat, *lon, *loc, *temp;
@@ -1630,12 +1617,17 @@ fetch_lat_long_from_string  (const char *str, int *latitude_degrees, int *latitu
 	while (*lon != '+' && *lon != '-')
 		lon++;
 
-	if (parse_coord (lat, lon - lat, latitude_degrees, latitude_minutes, latitude_seconds) == 1 ||
-		       	parse_coord (lon, strlen (lon), longitude_degrees, longitude_minutes, longitude_seconds) 
-			== 1) {
-				free(lat);
-				return 1;
-			}
+	if (parse_coord (lat, (int)(lon - lat),
+			 latitude_degrees,
+			 latitude_minutes,
+			 latitude_seconds) == 1 ||
+	    parse_coord (lon, (int)strlen(lon),
+			 longitude_degrees,
+			 longitude_minutes,
+			 longitude_seconds) == 1) {
+	    free(lat);
+	    return 1;
+	}
 	
 	free (lat);
 
@@ -1656,7 +1648,7 @@ icaltimezone_parse_zone_tab		(void)
     FILE *fp;
     char buf[1024];  /* Used to store each line of zones.tab as it is read. */
     char location[1024]; /* Stores the city name when parsing buf. */
-    unsigned int filename_len;
+    size_t filename_len;
     int latitude_degrees = 0, latitude_minutes = 0, latitude_seconds = 0;
     int longitude_degrees = 0, longitude_minutes = 0, longitude_seconds = 0;
     icaltimezone zone;
@@ -1753,7 +1745,7 @@ icaltimezone_parse_zone_tab		(void)
 void
 icaltimezone_release_zone_tab		(void)
 {
-    int i;
+    unsigned int i;
     icalarray *mybuiltin_timezones = builtin_timezones;
 
     if (builtin_timezones == NULL)
@@ -1773,6 +1765,12 @@ icaltimezone_load_builtin_timezone	(icaltimezone *zone)
 	    /* If the location isn't set, it isn't a builtin timezone. */
     if (!zone->location || !zone->location[0])
 	return;
+
+#ifdef HAVE_PTHREAD
+    pthread_mutex_lock(&builtin_mutex);
+    if (zone->component)
+       goto out;
+#endif
 
 #ifdef USE_BUILTIN_TZDATA
     {
@@ -1830,8 +1828,11 @@ icaltimezone_load_builtin_timezone	(icaltimezone *zone)
     icalcomponent_remove_component(comp,subcomp);
     icalcomponent_free(comp);
     }
-#endif    
-
+#endif 
+#ifdef HAVE_PTHREAD
+ out:
+    pthread_mutex_unlock(&builtin_mutex);
+#endif
 }
 
 
@@ -1947,10 +1948,18 @@ static const char* get_zone_directory(void)
 	return zone_files_directory == NULL ? ZONEINFO_DIRECTORY : zone_files_directory;
 #else
 	wchar_t wbuffer[1000];
+#ifndef _WIN32_WCE
 	char buffer[1000], zoneinfodir[1000], dirname[1000];
+#else
+	wchar_t zoneinfodir[1000], dirname[1000];
+#endif
 	int used_default;
 	static char *cache = NULL;
+#ifndef _WIN32_WCE
 	char *dirslash, *zislash;
+#else
+	wchar_t *dirslash, *zislash;
+#endif
 	struct stat st;
 
 	if (zone_files_directory)
@@ -1963,6 +1972,8 @@ static const char* get_zone_directory(void)
 	if (!GetModuleFileNameW (NULL, wbuffer, sizeof (wbuffer) / sizeof (wbuffer[0])))
 	    return ZONEINFO_DIRECTORY;
 
+/*wince supports only unicode*/
+#ifndef _WIN32_WCE
 	/* Convert to system codepage */
 	if (!WideCharToMultiByte (CP_ACP, 0, wbuffer, -1, buffer, sizeof (buffer),
 				  NULL, &used_default) ||
@@ -1975,6 +1986,7 @@ static const char* get_zone_directory(void)
 		used_default)
 		return ZONEINFO_DIRECTORY;
 	}
+#endif
 	/* Look for the zoneinfo directory somewhere in the path where
 	 * the app is installed. If the path to the app is
 	 *
@@ -2010,10 +2022,38 @@ static const char* get_zone_directory(void)
 	 */
 
 	/* Strip away basename of app .exe first */
+#ifndef _WIN32_WCE
 	dirslash = _mbsrchr (buffer, '\\');
+#else
+	dirslash = wcsrchr (wbuffer, L'\\');
+#endif
 	if (dirslash)
+#ifndef _WIN32_WCE
 	    *dirslash = '\0';
+#else
+	    *dirslash = L'\0';
+#endif
 
+#ifdef _WIN32_WCE
+	while ((dirslash = wcsrchr (wbuffer, '\\'))) {
+	    /* Strip one more directory from app .exe location */
+	    *dirslash = L'\0';
+	    
+        MultiByteToWideChar(CP_ACP,0,ZONEINFO_DIRECTORY,-1,zoneinfodir,1000);
+        
+	    while ((zislash = wcschr (zoneinfodir, L'/'))) {
+		*zislash = L'.';
+		wcscpy (dirname, wbuffer);
+		wcscat (dirname, "/");
+		wcscat (dirname, zislash + 1);
+		if (stat (dirname, &st) == 0 &&
+		    S_ISDIR (st.st_mode)) {
+		    cache = wce_wctomb (dirname);
+		    return cache;
+		}
+	    }
+	}
+#else
 	while ((dirslash = _mbsrchr (buffer, '\\'))) {
 	    /* Strip one more directory from app .exe location */
 	    *dirslash = '\0';
@@ -2031,12 +2071,15 @@ static const char* get_zone_directory(void)
 		}
 	    }
 	}
+#endif
 	return ZONEINFO_DIRECTORY;
 #endif
 }
 
 void set_zone_directory(char *path)
 {
+	if (zone_files_directory)
+		free_zone_directory();
 	zone_files_directory = malloc(strlen(path)+1);
 	if ( zone_files_directory != NULL )
 	{
@@ -2049,6 +2092,7 @@ void free_zone_directory(void)
 	if ( zone_files_directory != NULL )
 	{
 		free(zone_files_directory);
+		zone_files_directory = NULL;
 	}
 }
 

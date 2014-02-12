@@ -25,7 +25,7 @@ SET(ical_jni_LIB_SRCS
    net_cp_jlibical_VComponent_cxx.h
 )
 
-add_library(ical_jni SHARED ${ical_jni_LIB_SRCS})
+add_library(ical_jni ${LIBRARY_TYPE} ${ical_jni_LIB_SRCS})
 
 target_link_libraries(ical_jni ical_cxx)
 
@@ -46,7 +46,7 @@ install(FILES  libical.jar DESTINATION /share)
 #
 #INCLUDES = -I../libical -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/$(JAVA_PLATFORM)
 #
-#libical_jni_la_LDFLAGS = -no-defined -version-info 44:0:44
+#libical_jni_la_LDFLAGS = -no-defined -version-info 48:0:48
 #
 #libical_jni_la_LIBADD = 			\
 #	../libical/libical_cxx.la
