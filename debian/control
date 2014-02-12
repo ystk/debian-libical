@@ -2,8 +2,8 @@ Source: libical
 Section: libs
 Priority: optional
 Maintainer: Fathi Boudra <fabo@debian.org>
-Build-Depends: debhelper (>= 7.4), cmake, tzdata
-Standards-Version: 3.8.3
+Build-Depends: debhelper (>= 9), cmake, tzdata
+Standards-Version: 3.9.3
 Homepage: http://freeassociation.sourceforge.net
 
 Package: libical-dev
@@ -17,7 +17,6 @@ Description: iCalendar library implementation in C (development)
  and subcomponents.
 
 Package: libical0
-Section: libs
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, tzdata
 Description: iCalendar library implementation in C (runtime)
@@ -28,3 +27,13 @@ Description: iCalendar library implementation in C (runtime)
  .
  This package contains the files necessary for running applications that use
  the libical library.
+
+Package: libical-dbg
+Priority: extra
+Architecture: any
+Section: debug
+Depends: libical0 (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for libical
+ This package contains the debugging symbols associated with libical.
+ .
+ They will automatically be used by gdb for debugging libical related issues.

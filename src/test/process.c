@@ -30,8 +30,12 @@
 #include <string.h> /* For strerror */
 #include <stdlib.h> /* for free */
 
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#endif
+
 #include <libical/ical.h>
-#include <libical/icalss.h>
+#include <libicalss/icalss.h>
 
 void send_message(icalcomponent *reply,const char* this_user)
 {

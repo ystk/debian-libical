@@ -50,9 +50,9 @@
 #include <locale.h>
 #include <ctype.h> /* for isspace and isdigit */
 
-#ifdef WIN32
-#define snprintf      _snprintf
-#define strcasecmp    stricmp
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#define strcasecmp stricmp
 #endif
 
 #if _MAC_OS_
@@ -266,6 +266,84 @@ static char* icalmemory_strdup_and_dequote(const char* str)
 }
 
 /*
+ * Returns a quoted copy of a string
+ * @todo This is not RFC2445 compliant.
+ * The RFC only allows:
+ * TSAFE-CHAR = %x20-21 / %x23-2B / %x2D-39 / %x3C-5B / %x5D-7E / NON-US-ASCII
+ * As such, \t\r\b\f are not allowed, not even escaped
+ */
+static char* icalmemory_strdup_and_quote(const icalvalue* value, 
+                                         const char* unquoted_str)
+{
+    char *str;
+    char *str_p;
+    const char *p;
+    size_t buf_sz;
+
+    buf_sz = strlen(unquoted_str)+1;
+
+    str_p = str = (char*)icalmemory_new_buffer(buf_sz);
+
+    if (str_p == 0){
+      return 0;
+    }
+
+    for(p=unquoted_str; *p!=0; p++){
+
+	switch(*p){
+	    case '\n': {
+            icalmemory_append_string(&str,&str_p,&buf_sz,"\\n");
+            break;
+	    }
+
+	    case '\t': {
+            icalmemory_append_string(&str,&str_p,&buf_sz,"\\t");
+            break;
+	    }
+	    case '\r': {
+            icalmemory_append_string(&str,&str_p,&buf_sz,"\\r");
+            break;
+	    }
+	    case '\b': {
+            icalmemory_append_string(&str,&str_p,&buf_sz,"\\b");
+            break;
+	    }
+	    case '\f': {
+            icalmemory_append_string(&str,&str_p,&buf_sz,"\\f");
+            break;
+	    }
+
+	    case ';':
+        case ',':
+            /* unescaped COMMA is allowed in CATEGORIES property as its
+               considered a list delimiter here, see:
+               http://tools.ietf.org/html/rfc2445#section-4.3.11 */
+            if (icalproperty_isa(value->parent) == ICAL_CATEGORIES_PROPERTY) {
+                icalmemory_append_char(&str,&str_p,&buf_sz,*p);
+                break;
+            }
+	    case '"':
+	    case '\\': {
+            icalmemory_append_char(&str,&str_p,&buf_sz,'\\');
+            icalmemory_append_char(&str,&str_p,&buf_sz,*p);
+            break;
+	    }
+
+	    default: {
+            icalmemory_append_char(&str,&str_p,&buf_sz,*p);
+	    }
+	}
+    }
+
+    /* Assume the last character is not a '\0' and add one. We could
+       check *str_p != 0, but that would be an uninitialized memory
+       read. */
+    
+    icalmemory_append_char(&str,&str_p,&buf_sz,'\0');
+    return str;
+}
+
+/*
  * FIXME
  *
  * This is a bad API, as it forces callers to specify their own X type.
@@ -300,14 +378,16 @@ icalvalue* icalvalue_new_enum(icalvalue_kind kind, int x_type, const char* str)
  * If you want a code that that does the same job with a decimal separator
  * dependant on the current locale, then use strtof() from libc.
  */
-int simple_str_to_float(const char* from,
-                        float *result,
-                        char** to)
+int simple_str_to_double(const char* from,
+                         double *result,
+                         char** to)
 {
 #define TMP_NUM_SIZE 100
     char *start=NULL, *end=NULL, *cur=(char*)from ;
     char tmp_buf[TMP_NUM_SIZE+1] ; /*hack*/
+#ifndef _WIN32_WCE
     struct lconv *loc_data = localeconv () ;
+#endif
     int i=0 ;
 
     /*sanity checks*/
@@ -344,6 +424,7 @@ int simple_str_to_float(const char* from,
      * care to have the (optional) decimal separator be the one
      * of the current locale.
      */
+#ifndef _WIN32_WCE
     for (i=0 ; i < end - from ;++i) {
         if (start[i] == '.'
             && loc_data
@@ -356,6 +437,9 @@ int simple_str_to_float(const char* from,
             tmp_buf[i] = start[i] ;
         }
     }
+#else
+    GetNumberFormat(LOCALE_SYSTEM_DEFAULT,0,start, NULL, tmp_buf,TMP_NUM_SIZE);
+#endif
     if (to)
         *to = end ;
     *result = atof(tmp_buf) ;
@@ -391,7 +475,7 @@ icalvalue* icalvalue_new_from_string_with_error(icalvalue_kind kind,const char* 
     case ICAL_BINARY_VALUE:
     {
         icalattach *attach;
-        attach = icalattach_new_from_data ((unsigned char*)str, 0, 0);
+        attach = icalattach_new_from_data (str, 0, 0);
         if ( !attach )
           break;
         value = icalvalue_new_attach (attach);
@@ -498,7 +582,7 @@ icalvalue* icalvalue_new_from_string_with_error(icalvalue_kind kind,const char* 
         char *cur=NULL ;
         struct icalgeotype geo = {0.0, 0.0};
   
-        if (simple_str_to_float (str, &geo.lat, &cur)) {
+        if (simple_str_to_double (str, &geo.lat, &cur)) {
             goto geo_parsing_error ;
         }
   
@@ -521,7 +605,7 @@ icalvalue* icalvalue_new_from_string_with_error(icalvalue_kind kind,const char* 
             ++cur ;
         }
 
-        if (simple_str_to_float (cur, &geo.lon, &cur)) {
+        if (simple_str_to_double (cur, &geo.lon, &cur)) {
             goto geo_parsing_error ;
         }
         value = icalvalue_new_geo (geo) ;
@@ -833,81 +917,8 @@ static char* icalvalue_recur_as_ical_string_r(const icalvalue* value)
     return icalrecurrencetype_as_string_r(recur);
 }
 
- /* @todo This is not RFC2445 compliant.
- * The RFC only allows:
- * TSAFE-CHAR = %x20-21 / %x23-2B / %x2D-39 / %x3C-5B / %x5D-7E / NON-US-ASCII
- * As such, \t\r\b\f are not allowed, not even escaped
- */
-
 static char* icalvalue_text_as_ical_string_r(const icalvalue* value) {
-    char *str;
-    char *str_p;
-    const char *p;
-    size_t buf_sz;
-
-    buf_sz = strlen(value->data.v_string)+1;
-
-    str_p = str = (char*)icalmemory_new_buffer(buf_sz);
-
-    if (str_p == 0){
-      return 0;
-    }
-
-    for(p=value->data.v_string; *p!=0; p++){
-
-	switch(*p){
-	    case '\n': {
-		icalmemory_append_string(&str,&str_p,&buf_sz,"\\n");
-		break;
-	    }
-
-	    case '\t': {
-		icalmemory_append_string(&str,&str_p,&buf_sz,"\\t");
-		break;
-	    }
-	    case '\r': {
-		icalmemory_append_string(&str,&str_p,&buf_sz,"\\r");
-		break;
-	    }
-	    case '\b': {
-		icalmemory_append_string(&str,&str_p,&buf_sz,"\\b");
-		break;
-	    }
-	    case '\f': {
-		icalmemory_append_string(&str,&str_p,&buf_sz,"\\f");
-		break;
-	    }
-
-	    case ';':
-	    case ',':
-	    case '"':
-	    case '\\':{
-		icalmemory_append_char(&str,&str_p,&buf_sz,'\\');
-		icalmemory_append_char(&str,&str_p,&buf_sz,*p);
-		break;
-	    }
-
-	    default: {
-		icalmemory_append_char(&str,&str_p,&buf_sz,*p);
-	    }
-	}
-    }
-
-    /* Assume the last character is not a '\0' and add one. We could
-       check *str_p != 0, but that would be an uninitialized memory
-       read. */
-
-
-    icalmemory_append_char(&str,&str_p,&buf_sz,'\0');
-    return str;
-}
-
-
-static char* icalvalue_text_as_ical_string(const icalvalue* value) {
-	char *buf;
-	buf = icalvalue_text_as_ical_string_r(value);
-	icalmemory_add_tmp_buffer(buf);
-	return buf;
+    return icalmemory_strdup_and_quote(value, value->data.v_string);
 }
 
 
@@ -1192,7 +1203,7 @@ icalvalue_as_ical_string_r(const icalvalue* value)
         
     case ICAL_X_VALUE: 
 	if (value->x_value != 0)
-            return icalmemory_strdup(value->x_value);
+        return icalmemory_strdup_and_quote(value,value->x_value);
 
     /* FALLTHRU */
 

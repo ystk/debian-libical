@@ -64,12 +64,26 @@ typedef enum icalerrorenum {
 icalerrorenum * icalerrno_return(void);
 #define icalerrno (*(icalerrno_return()))
 
+/*#cmakedefine LIBICAL_STATIC 1*/
+
 /** If true, libicl aborts after a call to icalerror_set_error
  *
  *  @warning NOT THREAD SAFE -- recommended that you do not change
  *           this in a multithreaded program.
  */
-extern int icalerror_errors_are_fatal;
+#ifdef _MSC_VER
+  #if defined(LIBICAL_STATIC)
+    #define LIBICAL_EXPORT extern
+  #elif defined(BUILD_LIBICALDLL)
+    #define LIBICAL_EXPORT __declspec(dllexport)
+  #else
+    #define LIBICAL_EXPORT __declspec(dllimport)
+  #endif
+#else
+  #define LIBICAL_EXPORT extern
+#endif
+
+LIBICAL_EXPORT int icalerror_errors_are_fatal;
 
 /* Warning messages */
 
@@ -111,7 +125,11 @@ if(icalerror_get_error_state(x)==ICAL_ERROR_FATAL || \
 void icalerror_set_errno(icalerrorenum x); 
 #endif
 
-#ifdef ICAL_ERRORS_ARE_FATAL
+#if !defined(ICAL_ERRORS_ARE_FATAL)
+#define ICAL_ERRORS_ARE_FATAL 0
+#endif
+
+#if ICAL_ERRORS_ARE_FATAL == 1
 #undef NDEBUG
 #endif
 
@@ -121,7 +139,7 @@ void icalerror_set_errno(icalerrorenum x);
 #define icalerror_check_component_type(value,type);
 
 /* Assert with a message */
-#ifdef ICAL_ERRORS_ARE_FATAL
+#if ICAL_ERRORS_ARE_FATAL == 1
 
 #ifdef __GNUC__
 #define icalerror_assert(test,message) if(!(test)){fprintf(stderr,"%s(), %s:%d: %s\n",__FUNCTION__,__FILE__,__LINE__,message);icalerror_stop_here(); abort();}

@@ -1,6 +1,4 @@
 #!/usr/bin/make -f
 
 %:
-	dh --buildsystem=cmake --list-missing $@
-
-.PHONY: override_dh_auto_test
+	dh $@ --buildsystem=cmake --parallel --list-missing --dbg-package=libical-dbg

@@ -40,8 +40,9 @@
 #include "icalmemory.h"
 #include "icalvalue.h"
 
-
-
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#endif
 
 /* From Seth Alves,  <alves@hungry.com>   */
 struct icaldurationtype icaldurationtype_from_int(int t)
@@ -79,10 +80,9 @@ struct icaldurationtype icaldurationtype_from_string(const char* str)
     int begin_flag = 0;
     int time_flag = 0;
     int date_flag = 0;
-    int week_flag = 0;
     int digits=-1;
     int scan_size = -1;
-    int size = strlen(str);
+    size_t size = strlen(str);
     char p;
     struct icaldurationtype d;
 
@@ -137,19 +137,19 @@ struct icaldurationtype icaldurationtype_from_string(const char* str)
 		}
 
 	    case 'H': {	
-		if (time_flag == 0||week_flag == 1||d.hours !=0||digits ==-1) 
+		if (time_flag == 0||d.hours !=0||digits ==-1) 
 		    goto error;
 		d.hours = digits; digits = -1;
 		break;
 	    }
 	    case 'M': {
-		if (time_flag == 0||week_flag==1||d.minutes != 0||digits ==-1) 
+		if (time_flag == 0||d.minutes != 0||digits ==-1) 
 		    goto error;
 		d.minutes = digits; digits = -1;	    
 		break;
 	    }
 	    case 'S': {
-		if (time_flag == 0||week_flag==1||d.seconds!=0||digits ==-1) 
+		if (time_flag == 0||d.seconds!=0||digits ==-1) 
 		    goto error;
 		d.seconds = digits; digits = -1;	    
 		break;
@@ -157,12 +157,11 @@ struct icaldurationtype icaldurationtype_from_string(const char* str)
 	    case 'W': {
 		if (time_flag==1||date_flag==1||d.weeks!=0||digits ==-1) 
 		    goto error;
-		week_flag = 1;	
 		d.weeks = digits; digits = -1;	    
 		break;
 	    }
 	    case 'D': {
-		if (time_flag==1||week_flag==1||d.days!=0||digits ==-1) 
+		if (time_flag==1||d.days!=0||digits ==-1) 
 		    goto error;
 		date_flag = 1;
 		d.days = digits; digits = -1;	    

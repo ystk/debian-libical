@@ -47,6 +47,11 @@
 #include <string.h> /* for strdup */
 #include <limits.h> /* for INT_MAX */
 
+#ifdef _MSC_VER
+#define snprintf _snprintf
+#define strncasecmp strnicmp
+#endif
+
 struct icalcomponent_impl 
 {
 	char id[5];
@@ -81,7 +86,7 @@ static void icalcomponent_handle_conflicting_vtimezones (icalcomponent *comp,
 							 icalproperty *tzid_prop,
 							 const char *tzid,
 							 icalarray *tzids_to_rename);
-static unsigned int icalcomponent_get_tzid_prefix_len (const char *tzid);
+static size_t icalcomponent_get_tzid_prefix_len (const char *tzid);
 static void icalcomponent_rename_tzids(icalcomponent* comp,
 				       icalarray* rename_table);
 static void icalcomponent_rename_tzids_callback(icalparameter *param,
@@ -247,24 +252,22 @@ icalcomponent_free (icalcomponent* c)
 
     if(c != 0 ){
        
-		if ( c->properties != 0 )
-		{
-		   while( (prop=pvl_pop(c->properties)) != 0){
-		   assert(prop != 0);
-			   icalproperty_set_parent(prop,0);
-		   icalproperty_free(prop);
-		   }
-	        pvl_free(c->properties);
-		}
+	if ( c->properties != 0 )
+	{
+	    while( (prop=pvl_pop(c->properties)) != 0){
+		icalproperty_set_parent(prop,0);
+		icalproperty_free(prop);
+	    }
+	    pvl_free(c->properties);
+	}
       
 
-       while( (comp=pvl_data(pvl_head(c->components))) != 0){
-	   assert(comp!=0);
-	   icalcomponent_remove_component(c,comp);
-	   icalcomponent_free(comp);
-       }
+	while( (comp=pvl_data(pvl_head(c->components))) != 0){
+	    icalcomponent_remove_component(c,comp);
+	    icalcomponent_free(comp);
+	}
        
-       pvl_free(c->components);
+	pvl_free(c->components);
 
 	if (c->x_name != 0) {
 	    free(c->x_name);
@@ -433,8 +436,13 @@ icalcomponent_remove_property (icalcomponent* component, icalproperty* property)
     icalerror_check_arg_rv( (component!=0), "component");
     icalerror_check_arg_rv( (property!=0), "property");
     
+#ifdef ICAL_REMOVE_NONMEMBER_COMPONENT_IS_ERROR
     icalerror_assert( (icalproperty_get_parent(property)),"The property is not a member of a component");
-
+#else
+    if(icalproperty_get_parent(property) == 0){
+	return;
+    }
+#endif
     
     for( itr = pvl_head(component->properties);
 	 itr != 0;
@@ -866,7 +874,9 @@ int icalproperty_recurrence_is_excluded(icalcomponent *comp,
 	 
     struct icaltimetype exdatetime = icalcomponent_get_datetime(comp, exdate);
 
-    if (icaltime_compare(*recurtime, exdatetime) == 0) {
+    if ((icaltime_is_date(exdatetime) 
+    &&   icaltime_compare_date_only(*recurtime, exdatetime) == 0) ||
+        (icaltime_compare(*recurtime, exdatetime) == 0)) {
       /** MATCHED **/
         
       comp->property_iterator = property_iterator;
@@ -991,7 +1001,7 @@ void icalcomponent_foreach_recurrence(icalcomponent* comp,
   struct icaltimetype dtstart, dtend;
   icaltime_span recurspan, basespan, limit_span;
   time_t limit_start, limit_end;
-  int dtduration;
+  time_t dtduration;
   icalproperty *rrule, *rdate;
   struct icaldurationtype dur;
   pvl_elem property_iterator;	/* for saving the iterator */
@@ -1057,6 +1067,10 @@ void icalcomponent_foreach_recurrence(icalcomponent* comp,
       if (icaltime_is_null_time(rrule_time)) 
 	break;
 
+      /* if we have iterated past end time, then no need to check any further */
+      if (icaltime_compare(rrule_time, end) > 0)
+	break;
+
       dur = icaltime_subtract(rrule_time, dtstart);
 
       recurspan.start = basespan.start + icaldurationtype_as_int(dur);
@@ -1102,6 +1116,7 @@ void icalcomponent_foreach_recurrence(icalcomponent* comp,
 
     if (!icalproperty_recurrence_is_excluded(comp, &dtstart, &rdate_period.time)) {
       /** call callback action **/
+      if (icaltime_span_overlaps(&recurspan, &limit_span))
       (*callback) (comp, &recurspan, callback_data);
     }
     comp->property_iterator = property_iterator;
@@ -1171,6 +1186,8 @@ void icalcomponent_strip_errors(icalcomponent* component)
 	if(icalproperty_isa(p) == ICAL_XLICERROR_PROPERTY)
 	{
 	    icalcomponent_remove_property(component,p);
+	    icalproperty_free(p);
+	    p = NULL;
 	}
     }
     
@@ -1238,6 +1255,8 @@ void icalcomponent_convert_errors(icalcomponent* component)
 					   icalproperty_new_requeststatus(rst));
 		
 		icalcomponent_remove_property(component,p);
+		icalproperty_free(p);
+		p = NULL;
 	    }
 	}
     }
@@ -2213,7 +2232,7 @@ icalcomponent_handle_conflicting_vtimezones (icalcomponent *comp,
 					     icalarray *tzids_to_rename)
 {
   int i, suffix, max_suffix = 0, num_elements;
-  unsigned int tzid_len;
+  size_t tzid_len;
   char *tzid_copy, *new_tzid, suffix_buf[32];
   (void)tzid_prop; /* hack to stop unused variable warning */
 
@@ -2232,7 +2251,7 @@ icalcomponent_handle_conflicting_vtimezones (icalcomponent *comp,
     icaltimezone *zone;
     const char *existing_tzid;
     const char *existing_tzid_copy;
-    unsigned int existing_tzid_len;
+    size_t existing_tzid_len;
 
     zone = icalarray_element_at (comp->timezones, i);
     existing_tzid = icaltimezone_get_tzid (zone);
@@ -2259,6 +2278,7 @@ icalcomponent_handle_conflicting_vtimezones (icalcomponent *comp,
           free(tzid_copy);
 	} else {
 	  icalarray_append (tzids_to_rename, tzid_copy);
+	  free(tzid_copy);
 	  icalarray_append (tzids_to_rename, existing_tzid_copy);
 	}
 	return;
@@ -2294,13 +2314,15 @@ icalcomponent_handle_conflicting_vtimezones (icalcomponent *comp,
   strcpy (new_tzid + tzid_len, suffix_buf);
   icalarray_append (tzids_to_rename, tzid_copy);
   icalarray_append (tzids_to_rename, new_tzid);
+  free(tzid_copy);
+  free(new_tzid);
 }
 
 
 /* Returns the length of the TZID, without any trailing digits. */
-static unsigned int icalcomponent_get_tzid_prefix_len (const char *tzid)
+static size_t icalcomponent_get_tzid_prefix_len (const char *tzid)
 {
-  int len;
+  size_t len;
   const char *p;
 
   len = strlen (tzid);

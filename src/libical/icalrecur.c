@@ -139,16 +139,23 @@
 #include <stdint.h>
 #endif
 
+#include <stdio.h>
+#include <stdarg.h>
+
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#endif
+
 #include <limits.h>
 
 #ifndef HAVE_INTPTR_T
-#if defined (WIN32) || defined (XP_BEOS)
+#if (defined (WIN32) && !defined (__MINGW32__)) || defined (XP_BEOS)
 typedef long intptr_t;
 #endif
 #endif
 
-#ifdef WIN32
-#define strcasecmp      stricmp
+#ifdef _MSC_VER
+#define strcasecmp stricmp
 #endif
 
 #include "icalrecur.h"
@@ -156,7 +163,7 @@ typedef long intptr_t;
 #include "icalerror.h"
 #include "icalmemory.h"
 
-#include <stdlib.h> /* for malloc */
+#include <stdlib.h> /* for malloc, strtol */
 #include <errno.h> /* for errno */
 #include <string.h> /* for strdup and strchr*/
 #include <assert.h>
@@ -354,7 +361,7 @@ void icalrecur_add_bydayrules(struct icalrecur_parser *parser, const char* vals)
     char *t, *n;
     int i=0;
     int sign = 1;
-    int weekno = 0;
+    char weekno = 0;           /* note: Novell/Groupwise sends BYDAY=255SU, so we fit in a signed char to get -1 SU for last sunday. */
     icalrecurrencetype_weekday wd;
     short *array = parser->rt.by_day;
     char* end;
@@ -389,7 +396,7 @@ void icalrecur_add_bydayrules(struct icalrecur_parser *parser, const char* vals)
 	}
 
 	/* Get Optional weekno */
-	weekno = strtol(t,&t,10);
+	weekno = (char)strtol(t,&t,10);
 
 	/* Outlook/Exchange generate "BYDAY=MO, FR" and "BYDAY=2 TH".
 	 * Cope with that.
@@ -441,7 +448,7 @@ struct icalrecurrencetype icalrecurrencetype_from_string(const char* str)
 	if(name == 0){
 	    icalerror_set_errno(ICAL_MALFORMEDDATA_ERROR);
 	    icalrecurrencetype_clear(&parser.rt);
-		free(parser.copy);
+	    free(parser.copy);
 	    return parser.rt;
 	}
 
@@ -453,6 +460,11 @@ struct icalrecurrencetype icalrecurrencetype_from_string(const char* str)
 	    parser.rt.until = icaltime_from_string(value);
 	} else if (strcasecmp(name,"INTERVAL") == 0){
 	    parser.rt.interval = (short)atoi(value);
+            /* don't allow an interval to be less than 1
+	       (RFC specifies an interval must be a positive integer) */
+	    if (parser.rt.interval < 1){
+	        parser.rt.interval = 1;
+	    }
 	} else if (strcasecmp(name,"WKST") == 0){
 	    parser.rt.week_start = icalrecur_string_to_weekday(value);
 	    sort_bydayrules(&parser);
@@ -485,7 +497,7 @@ struct icalrecurrencetype icalrecurrencetype_from_string(const char* str)
 	} else {
 	    icalerror_set_errno(ICAL_MALFORMEDDATA_ERROR);
 	    icalrecurrencetype_clear(&parser.rt);
-		free(parser.copy);
+	    free(parser.copy);
 	    return parser.rt;
 	}
 	
@@ -989,13 +1001,14 @@ icalrecur_iterator* icalrecur_iterator_new(struct icalrecurrencetype rule,
         struct icaltimetype next;
 	icalerror_clear_errno();
 
-	for (;;) {
+        /* Fail after hitting the year 20000 if no expanded days match */
+	while (impl->last.year < 20000) {
             expand_year_days(impl, impl->last.year);
-        if( icalerrno != ICAL_NO_ERROR) {
-            icalerror_set_errno(ICAL_MALFORMEDDATA_ERROR);
-            free(impl);
-            return 0;
-        }
+            if( icalerrno != ICAL_NO_ERROR) {
+                icalerror_set_errno(ICAL_MALFORMEDDATA_ERROR);
+                free(impl);
+                return 0;
+            }
 	    if (impl->days[0] != ICAL_RECURRENCE_ARRAY_MAX)
 	        break; /* break when no days are expanded */
 	    increment_year(impl,impl->rule.interval);
@@ -1593,11 +1606,13 @@ static int next_month(icalrecur_iterator* impl)
       int day;
       int days_in_month = icaltime_days_in_month(impl->last.month,
                                                    impl->last.year);
-      assert( BYDAYPTR[0]!=ICAL_RECURRENCE_ARRAY_MAX);
-
       int set_pos_counter = 0;
       int set_pos_total = 0;
-      
+
+      int found = 0;
+
+      assert( BYDAYPTR[0]!=ICAL_RECURRENCE_ARRAY_MAX);
+     
       /* Count the past positions for the BYSETPOS calculation */
       if(has_by_data(impl,BY_SET_POS)){
           int last_day = impl->last.day;
@@ -1612,9 +1627,7 @@ static int next_month(icalrecur_iterator* impl)
 	  }
           impl->last.day = last_day;
       }
-
-      int found = 0;
-      
+     
       for(day = impl->last.day+1; day <= days_in_month; day++){
           impl->last.day = day;
 	  
@@ -1927,8 +1940,8 @@ static int expand_year_days(icalrecur_iterator* impl, int year)
     /* BY_WEEK_NO together with BY_MONTH - may conflict, in this case BY_MONTH wins */
     if( (flags & 1<<BY_MONTH) && (flags & 1<<BY_WEEK_NO) ){
         int valid_weeks[ICAL_BY_WEEKNO_SIZE];
-        memset(valid_weeks, 0, sizeof(valid_weeks));
         int valid = 1;    
+        memset(valid_weeks, 0, sizeof(valid_weeks));
         t.year = year;
         t.is_date = 1;
 

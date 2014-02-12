@@ -1,3 +1,4 @@
+# SymbolsHelper-Confirmed: 0.48 amd64
 libical.so.0 libical0 #MINVER#
  caldat@Base 0.30
  check_set_position@Base 0.44
@@ -6,8 +7,11 @@ libical.so.0 libical0 #MINVER#
  decode_quoted_printable@Base 0.30
  free_zone_directory@Base 0.30
  ical_bt@Base 0.33
+ ical_get_unknown_token_handling_setting@Base 0.48
+ ical_set_unknown_token_handling_setting@Base 0.48
  ical_tzid_prefix@Base 0.43
  icalarray_append@Base 0.30
+ icalarray_copy@Base 0.48
  icalarray_element_at@Base 0.30
  icalarray_free@Base 0.30
  icalarray_new@Base 0.30
@@ -191,6 +195,9 @@ libical.so.0 libical0 #MINVER#
  icalparameter_get_encoding@Base 0.30
  icalparameter_get_fbtype@Base 0.30
  icalparameter_get_fmttype@Base 0.30
+ icalparameter_get_iana@Base 0.48
+ icalparameter_get_iana_name@Base 0.48
+ icalparameter_get_iana_value@Base 0.48
  icalparameter_get_id@Base 0.31
  icalparameter_get_language@Base 0.30
  icalparameter_get_latency@Base 0.31
@@ -213,6 +220,7 @@ libical.so.0 libical0 #MINVER#
  icalparameter_get_xlicerrortype@Base 0.30
  icalparameter_get_xname@Base 0.30
  icalparameter_get_xvalue@Base 0.30
+ icalparameter_has_same_name@Base 0.48
  icalparameter_isa@Base 0.30
  icalparameter_isa_parameter@Base 0.30
  icalparameter_kind_to_string@Base 0.30
@@ -232,6 +240,7 @@ libical.so.0 libical0 #MINVER#
  icalparameter_new_fmttype@Base 0.30
  icalparameter_new_from_string@Base 0.30
  icalparameter_new_from_value_string@Base 0.30
+ icalparameter_new_iana@Base 0.48
  icalparameter_new_id@Base 0.31
  icalparameter_new_impl@Base 0.30
  icalparameter_new_language@Base 0.30
@@ -264,6 +273,9 @@ libical.so.0 libical0 #MINVER#
  icalparameter_set_encoding@Base 0.30
  icalparameter_set_fbtype@Base 0.30
  icalparameter_set_fmttype@Base 0.30
+ icalparameter_set_iana@Base 0.48
+ icalparameter_set_iana_name@Base 0.48
+ icalparameter_set_iana_value@Base 0.48
  icalparameter_set_id@Base 0.31
  icalparameter_set_language@Base 0.30
  icalparameter_set_latency@Base 0.31
@@ -997,7 +1009,8 @@ libical.so.0 libical0 #MINVER#
  restr_string_map@Base 0.30
  set_tz@Base 0.31
  set_zone_directory@Base 0.30
- simple_str_to_float@Base 0.31
+ simple_str_to_double@Base 0.48
+#MISSING: 0.48# simple_str_to_float@Base 0.31
  sspm_action_map@Base 0.30
  sspm_append_char@Base 0.30
  sspm_append_hex@Base 0.30

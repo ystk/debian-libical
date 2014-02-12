@@ -31,6 +31,11 @@
 #include <ctype.h>  /* for tolower()*/
 #include <string.h> /* for strstr */
 #include <stdlib.h> /* for free(), malloc() */
+
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#endif
+
 icalcomponent* icalmessage_get_inner(icalcomponent* comp)
 {
     if (icalcomponent_isa(comp) == ICAL_VCALENDAR_COMPONENT){
@@ -43,11 +48,13 @@ icalcomponent* icalmessage_get_inner(icalcomponent* comp)
 static char* lowercase(const char* str)
 {
     char* p = 0;
-    char* n = icalmemory_strdup(str);
+    char* n = 0;
 
     if(str ==0){
 	return 0;
     }
+
+    n = icalmemory_strdup(str);  
 
     for(p = n; *p!=0; p++){
 	*p = tolower(*p);
@@ -72,6 +79,7 @@ icalproperty* icalmessage_find_attendee(icalcomponent* comp, const char* user)
 	lattendee = lowercase(icalproperty_get_attendee(p));
 
 	if (strstr(lattendee,user) != 0){
+	    free(lattendee);
 	    attendee = p;
 	    break;
 	}

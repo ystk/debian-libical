@@ -47,9 +47,11 @@
 
 #ifdef WIN32
 #include <windows.h>
+#endif
 
-#define snprintf      _snprintf
-#define strcasecmp    stricmp
+#if defined(_MSC_VER)
+#define snprintf   _snprintf
+#define strcasecmp stricmp
 #endif
 
 #ifdef WIN32
@@ -364,7 +366,11 @@ void unset_tz(char *tzstr)
 #ifdef HAVE_UNSETENV
 	unsetenv("TZ");
 #else
+#ifdef _MSC_VER 
+	putenv("TZ="); // The equals is required to remove with MS Visual C++
+#else
 	putenv("TZ");
+#endif
 #endif
     } 
 
@@ -427,15 +433,11 @@ to prevent any crashes */
     
     /* Set TZ to UTC and use mktime to convert to a time_t. */
     old_tz = set_tz ("UTC");
-#ifdef WIN32
     tzset ();
-#endif
 
     t = mktime (&stm);
     unset_tz (old_tz);
-#ifdef WIN32
     tzset ();
-#endif
 
 #ifdef HAVE_PTHREAD
     pthread_mutex_unlock (&tzid_mutex);
@@ -508,7 +510,7 @@ struct icaltimetype icaltime_normalize(const struct icaltimetype tt)
 struct icaltimetype icaltime_from_string(const char* str)
 {
     struct icaltimetype tt = icaltime_null_time();
-    int size;
+    size_t size;
 
     icalerror_check_arg_re(str!=0,"str",icaltime_null_time());
 

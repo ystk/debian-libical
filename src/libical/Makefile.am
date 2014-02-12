@@ -51,7 +51,11 @@ INCLUDES =				\
 	-I$(top_builddir)/src/libical	\
 	-I$(srcdir)
 
-libical_la_LDFLAGS = -version-info 44:0:44
+libical_la_LDFLAGS = -version-info 48:0:48
+
+if OS_WIN32
+libical_la_LDFLAGS += -no-undefined
+endif
 
 libical_la_LIBADD = $(PTHREAD_LIBS)
 
@@ -101,7 +105,7 @@ libical_la_SOURCES =		\
 	pvl.h			\
 	sspm.c			\
 	sspm.h			\
-	vsnprintf.c		\
+	libicals_w32_vsnprintf_replacement.c \
 	icallangbind.h		\
 	icallangbind.c 		\
 	caldate.c 		\
@@ -175,7 +179,7 @@ COMBINEDHEADERS =					\
 	$(top_srcdir)/src/libical/icaltimezone.h	\
 	$(top_srcdir)/src/libical/icalparser.h		\
 	$(top_srcdir)/src/libical/icalmemory.h		\
-	$(top_srcdir)/src/libical/icalerror.h		\
+	icalerror.h		                        \
 	$(top_srcdir)/src/libical/icalrestriction.h	\
 	$(top_srcdir)/src/libical/sspm.h		\
 	$(top_srcdir)/src/libical/icalmime.h 		\

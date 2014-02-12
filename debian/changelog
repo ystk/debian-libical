@@ -1,3 +1,27 @@
+libical (0.48-2) unstable; urgency=low
+
+  * Add patches (Thanks to Robie Basak):
+    - fix_arm_ftbfs.patch: fix FTBFS on ARM: do not unput when input returns
+      EOF. (Closes: #663624, #670138)
+    - fix_ftbfs_dependencies.patch: fix CMakeLists.txt dependencies.
+      (Closes: #670139)
+    - fix_timezone_crash.patch: workaround to avoid heap corruption until
+      upstream have a complete fix. (Closes: #670140)
+
+ -- Fathi Boudra <fabo@debian.org>  Sun, 13 May 2012 12:52:58 +0300
+
+libical (0.48-1) unstable; urgency=low
+
+  * New upstream release. (Closes: #638597)
+  * Add debug libical debug package.
+  * Drop patches:
+    - 01_fix_headers.diff - merged upstream.
+    - 02_fix_bswap32_ftbfs_kfreebsd.diff - merged upstream.
+  * Add 0001_convert_float_to_strings_with_snprintf_sfbug3493034.patch
+    using snprintf to convert float to strings isn't locale aware.
+
+ -- Fathi Boudra <fabo@debian.org>  Sun, 11 Mar 2012 09:21:07 +0200
+
 libical (0.44-3) unstable; urgency=low
 
   * Add patch to fix FTBFS on GNU/kFreeBSD due to an undefined reference to

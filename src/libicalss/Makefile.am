@@ -27,7 +27,7 @@ AM_YFLAGS = -d -v -p ss -l
 AM_LFLAGS = -Pss -L -R
 LEX_OUTPUT_ROOT = lex.ss
 
-all: icalss.h libical/icalss.h
+BUILT_SOURCES = icalss.h
 
 # just to get it built
 $(srcdir)/icalgauge.c: icalssyacc.h
@@ -63,8 +63,13 @@ INCLUDES =			\
 	-I$(top_builddir)/src/libical	\
 	$(BDB_INCLUDE)
 
-libicalss_la_LDFLAGS = -version-info 44:0:44
-libicalss_la_LIBADD = $(BDB_LIBFILES) 
+libicalss_la_LDFLAGS = -version-info 48:0:48
+
+if OS_WIN32
+libicalss_la_LDFLAGS += -no-undefined
+endif
+
+libicalss_la_LIBADD = $(BDB_LIBFILES) $(top_builddir)/src/libical/libical.la
 
 if DEV
 libicalss_la_DEVSOURCES = icalsslexer.l icalssyacc.y
@@ -138,16 +143,6 @@ icalss.h: $(COMBINEDHEADERS)
 	echo '}'                          >> icalss.h
 	echo '#endif'                     >> icalss.h
 	echo '#endif'                     >> icalss.h
-
-libical/icalss.h:
-	mkdir -p ${@D}
-	ln -s ../icalss.h $@
-clean-local: clean-icalss
-clean-icalss:
-	rm -f libical/icalss.h
-	rmdir libical
-
-distclean:
 
 libicalssinclude_HEADERS = icalss.h  icalcalendar.h icalclassify.h icalcluster.h icaldirset.h icaldirsetimpl.h icalfileset.h icalfilesetimpl.h icalgauge.h icalgaugeimpl.h icalmessage.h icalset.h icalspanlist.h icalssyacc.h $(libicalssinclude_BDBHEADERS)
 

@@ -29,6 +29,7 @@ int main(int argc, char **argv)
     int ret = 0;
     unsigned int total_failed = 0;
     unsigned int total_okay = 0;
+    unsigned int percent_failed = 0;
     int verbose = 0;
     icaltimezone *utc_zone = icaltimezone_get_utc_timezone();
 
@@ -44,12 +45,21 @@ int main(int argc, char **argv)
         struct icaltimetype curr_tt;
         int failed = 0;
         int curr_failed;
+        int zonedef_printed = 0;
 
         /*
          * select this location for glibc: needs support for TZ=<location>
          * which is not POSIX
          */
+#if defined(HAVE_SETENV)
         setenv("TZ", zone_location, 1);
+#else
+	static new_tz[256];
+	new_tz[0] = '\0';
+	strncat(new_tz, "TZ=", 255);
+	strncat(new_tz, zone_location, 255);
+	putenv(new_tz);
+#endif
         tzset();
 
         /*
@@ -87,12 +97,22 @@ int main(int argc, char **argv)
 
             /* only print first failed day and first day which is okay again */
             if (verbose || curr_failed != failed) {
-                printf("%s: day %03d: %s: libc %04d-%02d-%02d %02d:%02d:%02d dst %d",
+                struct tm utc_tm;
+                gmtime_r(&curr_time, &utc_tm);
+                printf("%s: day %03d: %s: %04d-%02d-%02d %02d:%02d:%02d UTC = libc %04d-%02d-%02d %02d:%02d:%02d dst %d",
                        zone_location,
                        day,
+
                        verbose ?
                        (curr_failed ? "failed" : "okay") :
                        (curr_failed ? "first failed" : "okay again"),
+
+                       utc_tm.tm_year + 1900,
+                       utc_tm.tm_mon + 1,
+                       utc_tm.tm_mday,
+                       utc_tm.tm_hour,
+                       utc_tm.tm_min,
+                       utc_tm.tm_sec,
 
                        curr_tm.tm_year + 1900,
                        curr_tm.tm_mon + 1,
@@ -114,6 +134,14 @@ int main(int argc, char **argv)
                 }
                 printf("\n");
                 failed = curr_failed;
+
+                if (!zonedef_printed) {
+                    icalcomponent *comp = icaltimezone_get_component(zone);
+                    if (comp) {
+                        printf("%s\n", icalcomponent_as_ical_string(comp));
+                    }
+                    zonedef_printed = 1;
+                }
             }
 
             if (curr_failed) {
@@ -125,11 +153,20 @@ int main(int argc, char **argv)
     }
 
     if (total_failed || total_okay) {
+	percent_failed = total_failed * 100 / (total_failed + total_okay);
         printf(" *** Summary: %d zones tested, %u days failed, %u okay => %u%% failed ***\n",
                timezones->num_elements,
                total_failed,
                total_okay,
-               total_failed * 100 / (total_failed + total_okay));
+	       percent_failed);
+	if(!percent_failed) {
+	    ret = 0; /* good enough.
+			we will never be perfect unless our builtin
+			zones are created with vzic's -pure option.
+			Even then, we need to be in-sync with the
+			distro tzdata.. not that likely */
+	    printf(" *** There will always be a small error rate comparing builtin to distro timezones *** \n");
+	}
     }
 
     return ret;

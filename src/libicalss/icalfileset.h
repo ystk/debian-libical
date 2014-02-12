@@ -30,9 +30,9 @@
 #define ICALFILESET_H
 
 #include <libical/ical.h>
-#include <icalset.h>
-#include <icalcluster.h>
-#include <icalgauge.h>
+#include "icalset.h"
+#include "icalcluster.h"
+#include "icalgauge.h"
 #include <sys/types.h> /* For open() flags and mode */
 #include <sys/stat.h> /* For open() flags and mode */
 #include <fcntl.h> /* For open() flags and mode */
@@ -40,8 +40,6 @@
 #ifdef WIN32
 #define mode_t int
 #endif
-
-extern int icalfileset_safe_saves;
 
 typedef struct icalfileset_impl icalfileset;
 

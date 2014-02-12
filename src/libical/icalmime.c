@@ -38,9 +38,9 @@
 #include "dmalloc.h"
 #endif
 
-#ifdef WIN32
-#define snprintf      _snprintf
-#define strcasecmp    stricmp
+#if defined(_MSC_VER)
+#define snprintf _snprintf
+#define strcasecmp stricmp
 #endif
 
 /* These *_part routines are called by the MIME parser via the
@@ -400,6 +400,7 @@ int icalmime_test(char* (*get_string)(char *s, size_t size, void *d),
     sspm_write_mime(parts,NUM_PARTS,&out,"To: bob@bob.org");
 
     printf("%s\n",out);
+    free(out);
 
     return 0;
 

@@ -39,6 +39,9 @@
 /* Define to 1 if you have the <pthread.h> header file. */
 #undef HAVE_PTHREAD_H
 
+/* Define to 1 if you have the `setenv' function. */
+#undef HAVE_SETENV
+
 /* Define to 1 if you have the `snprintf' function. */
 #undef HAVE_SNPRINTF
 
@@ -78,6 +81,10 @@
 /* Define to 1 if you have the <wctype.h> header file. */
 #undef HAVE_WCTYPE_H
 
+/* Define to prevent empty properties from being replaced with X-LIC-ERROR
+   properties */
+#undef ICAL_ALLOW_EMPTY_PROPERTIES
+
 /* Define to make icalerror_* calls abort instead of internally signalling an
    error */
 #undef ICAL_ERRORS_ARE_FATAL
@@ -87,6 +94,10 @@
 
 /* Define to terminate lines with "\n" instead of "\r\n" */
 #undef ICAL_UNIX_NEWLINE
+
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR
 
 /* Define to 1 if you DO NOT WANT to see deprecated messages */
 #undef NO_WARN_DEPRECATED
@@ -100,6 +111,9 @@
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
+
+/* where our self provided zonefiles should live */
+#undef PACKAGE_DATA_DIR
 
 /* Define to the full name of this package. */
 #undef PACKAGE_NAME
@@ -135,5 +149,5 @@
 /* Define to `int' if <sys/types.h> does not define. */
 #undef mode_t
 
-/* Define to `unsigned' if <sys/types.h> does not define. */
+/* Define to `unsigned int' if <sys/types.h> does not define. */
 #undef size_t
