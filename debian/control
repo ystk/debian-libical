@@ -2,23 +2,23 @@ Source: libical
 Section: libs
 Priority: optional
 Maintainer: Fathi Boudra <fabo@debian.org>
-Build-Depends: debhelper (>= 9), cmake, tzdata
-Standards-Version: 3.9.3
+Build-Depends: cmake, debhelper (>= 9), tzdata
+Standards-Version: 3.9.5
 Homepage: http://freeassociation.sourceforge.net
 
 Package: libical-dev
 Section: libdevel
 Architecture: any
-Depends: ${misc:Depends}, libical0 (= ${binary:Version})
+Depends: libical1 (= ${binary:Version}), ${misc:Depends}
 Description: iCalendar library implementation in C (development)
  libical is an open source implementation of the IETF's iCalendar calendaring
  and scheduling protocols (RFC 2445, 2446, and 2447). It parses iCal components
  and provides a C API for manipulating the component properties, parameters,
  and subcomponents.
 
-Package: libical0
+Package: libical1
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, tzdata
+Depends: tzdata, ${misc:Depends}, ${shlibs:Depends}
 Description: iCalendar library implementation in C (runtime)
  libical is an open source implementation of the IETF's iCalendar calendaring
  and scheduling protocols (RFC 2445, 2446, and 2447). It parses iCal components
@@ -32,7 +32,7 @@ Package: libical-dbg
 Priority: extra
 Architecture: any
 Section: debug
-Depends: libical0 (= ${binary:Version}), ${misc:Depends}
+Depends: libical1 (= ${binary:Version}), ${misc:Depends}
 Description: debugging symbols for libical
  This package contains the debugging symbols associated with libical.
  .

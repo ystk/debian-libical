@@ -1,3 +1,1 @@
-usr/lib/libical.so.*
-usr/lib/libicalss.so.*
-usr/lib/libicalvcal.so.*
+usr/lib/lib*.so.*
