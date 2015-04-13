@@ -1,0 +1,35 @@
+Description: Sort keys to generate reproducible source code.
+Author: Dimitri John Ledkov <dimitri.j.ledkov@linux.intel.com>
+Bug-Debian: http://bugs.debian.org/773916
+
+Index: libical-1.0/scripts/mkderivedvalues.pl
+===================================================================
+--- libical-1.0.orig/scripts/mkderivedvalues.pl	2014-12-29 18:43:22.000000000 +0000
++++ libical-1.0/scripts/mkderivedvalues.pl	2014-12-29 19:48:49.121037370 +0000
+@@ -63,7 +63,7 @@
+   print "typedef enum icalvalue_kind {\n";
+   print "   ICAL_ANY_VALUE=$idx,\n";
+ 
+-  foreach $value  (keys %h) {
++  foreach $value  (sort keys %h) {
+     
+     $idx++;
+     my $ucv = join("",map {uc(lc($_));}  split(/-/,$value));
+@@ -132,7 +132,7 @@
+   my $count = scalar(keys %h) + 1;
+   print "static const struct icalvalue_kind_map value_map[$count]={\n"; 
+ 
+-  foreach $value  (keys %h) {
++  foreach $value  (sort keys %h) {
+ 
+     $idx++;
+     my $ucv = join("",map {uc(lc($_));}  split(/-/,$value));
+@@ -148,7 +148,7 @@
+ }
+ 
+ 
+-foreach $value  (keys %h) {
++foreach $value  (sort keys %h) {
+ 
+   my $autogen = $h{$value}->{C}->[0];
+   my $type = $h{$value}->{C}->[1];

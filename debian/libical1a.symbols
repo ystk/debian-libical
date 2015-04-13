@@ -1,5 +1,5 @@
 # SymbolsHelper-Confirmed: 1.0 amd64 i386
-libical.so.1 libical1 #MINVER#
+libical.so.1 libical1a #MINVER#
  caldat@Base 1.0
  check_set_position@Base 1.0
  compare_map@Base 1.0
@@ -1070,7 +1070,7 @@ libical.so.1 libical1 #MINVER#
  unset_tz@Base 1.0
  ycaltime_days_in_year@Base 1.0
 # SymbolsHelper-Confirmed: 1.0 i386
-libicalvcal.so.1 libical1 #MINVER#
+libicalvcal.so.1 libical1a #MINVER#
  Parse_MIME@Base 1.0
  Parse_MIME_FromFile@Base 1.0
  Parse_MIME_FromFileName@Base 1.0
@@ -1178,7 +1178,7 @@ libicalvcal.so.1 libical1 #MINVER#
  writeVObject@Base 1.0
  writeVObjectToFile@Base 1.0
  writeVObjectsToFile@Base 1.0
-libicalss.so.1 libical1 #MINVER#
+libicalss.so.1 libical1a #MINVER#
  icalcalendar_create@Base 1.0
  icalcalendar_free@Base 1.0
  icalcalendar_get_booked@Base 1.0
